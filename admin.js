@@ -106,13 +106,15 @@ function loadAll() {
   renderManagers();
 }
 
-function saveManagers() {
+function saveManagers() {  
   localStorage.setItem("heetherapyManagers", JSON.stringify(managers));
+  localStorage.setItem("heetherapyLastSaved", new Date().toLocaleString("ko-KR"));
   renderManagers();
 }
 
 function saveSiteStorage() {
   localStorage.setItem("heetherapySite", JSON.stringify(site));
+  localStorage.setItem("heetherapyLastSaved", new Date().toLocaleString("ko-KR"));
 }
 
 function fillSiteForm() {
@@ -243,27 +245,47 @@ function showPreview(src) {
 
 function renderManagers() {
   const list = document.getElementById("managerList");
-  if (!managers.length) {
-    list.innerHTML = `<div class="empty">등록된 관리사가 없습니다.</div>`;
+  const keyword = (document.getElementById("managerSearch")?.value || "").trim();
+
+  const totalEl = document.getElementById("totalManagers");
+  const todayEl = document.getElementById("todayManagers");
+  const savedEl = document.getElementById("lastSaved");
+
+  if (totalEl) totalEl.textContent = managers.length;
+  if (todayEl) todayEl.textContent = managers.filter(m => String(m.work || "").trim()).length;
+  if (savedEl) savedEl.textContent = localStorage.getItem("heetherapyLastSaved") || "-";
+
+  const filtered = managers.filter(m =>
+    !keyword ||
+    String(m.name || "").includes(keyword) ||
+    String(m.work || "").includes(keyword)
+  );
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty">검색 결과가 없습니다.</div>`;
     return;
   }
 
-  list.innerHTML = managers.map((m, i) => `
-    <div class="manager-item">
-      <div class="manager-photo"><img src="${m.image}" alt="${m.name}" onerror="this.parentElement.innerHTML='사진 없음'"></div>
-      <div class="manager-text">
-        <strong>${m.name}</strong>
-        <span>${formatAgeText(m.age)} · ${formatHeightText(m.height)} · ${formatBodyText(m.body)}</span>
-        <em>${m.work || "출근시간 문의"}</em>
+  list.innerHTML = filtered.map((m) => {
+    const i = managers.findIndex(item => String(item.id) === String(m.id));
+
+    return `
+      <div class="manager-item">
+        <div class="manager-photo"><img src="${m.image}" alt="${m.name}" onerror="this.parentElement.innerHTML='사진 없음'"></div>
+        <div class="manager-text">
+          <strong>${m.name}</strong>
+          <span>${formatAgeText(m.age)} · ${formatHeightText(m.height)} · ${formatBodyText(m.body)}</span>
+          <em>${m.work || "출근시간 문의"}</em>
+        </div>
+        <div class="manager-actions">
+          <button class="small" onclick="moveManager('${m.id}', -1)" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button class="small" onclick="moveManager('${m.id}', 1)" ${i === managers.length - 1 ? "disabled" : ""}>▼</button>
+          <button class="small" onclick="editManager('${m.id}')">수정</button>
+          <button class="small danger" onclick="deleteManager('${m.id}')">삭제</button>
+        </div>
       </div>
-      <div class="manager-actions">
-        <button class="small" onclick="moveManager('${m.id}', -1)" ${i === 0 ? "disabled" : ""}>▲</button>
-        <button class="small" onclick="moveManager('${m.id}', 1)" ${i === managers.length - 1 ? "disabled" : ""}>▼</button>
-        <button class="small" onclick="editManager('${m.id}')">수정</button>
-        <button class="small danger" onclick="deleteManager('${m.id}')">삭제</button>
-      </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
 function previewHome() {

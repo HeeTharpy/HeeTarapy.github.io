@@ -64,10 +64,33 @@
   </section>
 
   <section class="card">
-    <h2>등록된 관리사</h2>
-    <p class="hint">▲ ▼ 버튼으로 홈페이지 노출 순서를 바꿀 수 있습니다.</p>
-    <div id="managerList"></div>
-  </section>
+  <div class="section-head">
+    <div>
+      <h2>등록된 관리사</h2>
+      <p class="hint">검색 후 수정/삭제할 수 있습니다.</p>
+    </div>
+    <input id="managerSearch" class="search-input" placeholder="관리사 이름 검색">
+  </div>
+
+  <div class="dashboard">
+    <div>
+      <strong id="totalManagers">0</strong>
+      <span>전체 관리사</span>
+    </div>
+
+    <div>
+      <strong id="todayManagers">0</strong>
+      <span>출근 등록</span>
+    </div>
+
+    <div>
+      <strong id="lastSaved">-</strong>
+      <span>마지막 저장</span>
+    </div>
+  </div>
+
+  <div id="managerList"></div>
+</section>
 
   <section class="card">
     <h2>이벤트 관리</h2>
