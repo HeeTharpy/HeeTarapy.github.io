@@ -162,4 +162,24 @@
     flex-direction:column;
     gap:6px;
   }
+}/* MOBILE FINAL */
+
+@media (max-width:768px){
+
+.main-nav{
+    gap:12px;
+    font-size:12px;
+    overflow-x:auto;
+    white-space:nowrap;
+    scrollbar-width:none;
+}
+
+.main-nav::-webkit-scrollbar{
+    display:none;
+}
+
+.main-nav a:last-child{
+    display:none;
+}
+
 }
