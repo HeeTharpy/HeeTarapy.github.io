@@ -208,7 +208,7 @@ if (eventGrid) {
 </article>
     <article class="event-card">
       <h3>${site.eventTitle2}</h3>
-      ${renderTodaySchedule()}
+      <div class="event-text">${site.eventText2.replace(/\n/g, "<br>")}</div>
     </article>
   `;
 }
