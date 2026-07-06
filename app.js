@@ -210,3 +210,5 @@ if (eventGrid) {
   <h3>${site.eventTitle2}</h3>
   ${renderTodaySchedule()}
 </article>
+  `;
+}
