@@ -371,7 +371,9 @@ if (heroFileInput) {
   });
 }
 
-document.getElementById("managerImageFile").addEventListener("change", async function () {
+const managerImageFileInput = document.getElementById("managerImageFile");
+if (managerImageFileInput) {
+managerImageFileInput.addEventListener("change", async function () {
   const file = this.files && this.files[0];
   if (!file) return;
 
@@ -388,8 +390,18 @@ document.getElementById("managerImageFile").addEventListener("change", async fun
     showPreview("");
   }
 });
+}
 
-document.getElementById("managerImage").addEventListener("input", function () {
-  uploadedImage = "";
-  showPreview(this.value.trim());
-});
+const managerImagePathInput = document.getElementById("managerImage");
+if (managerImagePathInput) {
+  managerImagePathInput.addEventListener("input", function () {
+    uploadedImage = "";
+    showPreview(this.value.trim());
+  });
+}
+
+
+const managerSearchInput = document.getElementById("managerSearch");
+if (managerSearchInput) {
+  managerSearchInput.addEventListener("input", renderManagers);
+}
