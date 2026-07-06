@@ -48,3 +48,83 @@
 .premium-actions .btn{min-width:170px;padding:17px 30px;font-size:15px}
 .profile-nav-actions button{padding:13px 18px}
 @media(max-width:900px){.premium-profile{grid-template-columns:1fr;min-height:auto}.premium-photo{min-height:520px;height:520px}.premium-info h2{font-size:48px}.premium-specs div{display:block;text-align:center}.premium-specs b{display:block;margin-bottom:8px}}
+/* V5 FINAL HOME POLISH */
+.section{
+  padding:70px 20px;
+}
+
+.therapist-card{
+  overflow:hidden;
+}
+
+.thumb{
+  height:430px;
+  overflow:hidden;
+}
+
+.thumb img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center top;
+}
+
+.therapist-info{
+  position:relative;
+  background:linear-gradient(180deg,#111,#050505);
+  padding:28px 22px 30px;
+  margin-top:0;
+}
+
+.therapist-info h3{
+  margin:0 0 14px;
+  position:relative;
+  z-index:2;
+}
+
+.course-grid,
+.event-grid{
+  margin-top:10px;
+}
+
+.course-card,
+.event-card,
+.location-box{
+  box-shadow:0 20px 70px rgba(0,0,0,.35);
+}
+
+.reservation{
+  padding:80px 20px;
+}
+
+.footer{
+  padding:42px 20px;
+}
+
+@media(max-width:900px){
+  .section{
+    padding:55px 16px;
+  }
+
+  .thumb{
+    height:460px;
+  }
+
+  .hero h1{
+    font-size:46px;
+  }
+}
+
+@media(max-width:520px){
+  .thumb{
+    height:420px;
+  }
+
+  .section-head h2{
+    font-size:32px;
+  }
+
+  .therapist-info h3{
+    font-size:26px;
+  }
+}
