@@ -203,9 +203,9 @@ function renderTodaySchedule() {
 if (eventGrid) {
   eventGrid.innerHTML = `
     <article class="event-card">
-      <h3>${site.eventTitle1}</h3>
-      <p>${site.eventText1}</p>
-    </article>
+  <h3>${site.eventTitle1}</h3>
+  <div class="event-text">${site.eventText1.replace(/\n/g, "<br>")}</div>
+</article>
     <article class="event-card">
       <h3>${site.eventTitle2}</h3>
       ${renderTodaySchedule()}
