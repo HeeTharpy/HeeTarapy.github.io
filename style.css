@@ -127,4 +127,39 @@
   .therapist-info h3{
     font-size:26px;
   }
+}/* V5 TODAY SCHEDULE */
+.today-schedule{
+  display:grid;
+  gap:10px;
+  margin-top:18px;
+}
+
+.schedule-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  padding:13px 16px;
+  border-radius:14px;
+  background:rgba(217,181,90,.08);
+  border:1px solid rgba(217,181,90,.18);
+}
+
+.schedule-row strong{
+  color:#fff;
+  font-size:17px;
+}
+
+.schedule-row span{
+  color:#e6c05d;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+@media(max-width:520px){
+  .schedule-row{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:6px;
+  }
 }

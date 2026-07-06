@@ -180,4 +180,35 @@ const courseGrid = $("#courseGrid");
 if (courseGrid) courseGrid.innerHTML = `<article class="course-card"><p>PREMIUM</p><h3>60분 프리미엄 코스</h3><strong>170,000원</strong><span>프리미엄 스웨디시 테라피</span></article><article class="course-card"><p>WAXING</p><h3>왁싱 코스</h3><strong>문의</strong><span>하루 전 예약 진행</span></article>`;
 
 const eventGrid = $("#eventGrid");
-if (eventGrid) eventGrid.innerHTML = `<article class="event-card"><h3>${site.eventTitle1}</h3><p>${site.eventText1}</p></article><article class="event-card"><h3>${site.eventTitle2}</h3><p>${site.eventText2}</p></article>`;
+
+function renderTodaySchedule() {
+  const todayWorkers = activeTherapists.filter(item => item.work && item.work.trim());
+
+  if (!todayWorkers.length) {
+    return `<p>오늘 출근 정보는 텔레그램에서 확인해주세요.</p>`;
+  }
+
+  return `
+    <div class="today-schedule">
+      ${todayWorkers.map(item => `
+        <div class="schedule-row">
+          <strong>${item.name}</strong>
+          <span>${item.work}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+if (eventGrid) {
+  eventGrid.innerHTML = `
+    <article class="event-card">
+      <h3>${site.eventTitle1}</h3>
+      <p>${site.eventText1}</p>
+    </article>
+    <article class="event-card">
+      <h3>${site.eventTitle2}</h3>
+      ${renderTodaySchedule()}
+    </article>
+  `;
+}
