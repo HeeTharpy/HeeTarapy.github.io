@@ -49,7 +49,7 @@ function normalizeManagers(list) {
 
 function fallbackManagers() {
   const fallback = window.therapists || (typeof therapists !== "undefined" ? therapists : []);
-  return normalizeManagers(fallback.map(t => ({ ...t })));
+  return normalizeManagers(fallback);
 }
 
 function formatAge(age) {
