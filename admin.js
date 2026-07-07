@@ -2,7 +2,7 @@ let managers = [];
 let site = {};
 let uploadedImage = "";
 let uploadedHeroImage = "";
-let lastSaved = "-";
+let firebaseReady = false;
 
 const DEFAULT_SITE = {
   phone: "010-7255-2248",
@@ -19,20 +19,16 @@ const DEFAULT_SITE = {
   eventText2: "관리사 출근 현황을 실시간으로 확인하세요."
 };
 
-function getFirebaseDB() {
-  if (!window.db) {
-    alert("Firebase 연결을 찾지 못했습니다. firebase-config.js와 admin.html 스크립트를 확인하세요.");
-    return null;
-  }
-  return window.db;
+function getDb() {
+  if (typeof firebase === "undefined" || !firebase.database) return null;
+  try { return firebase.database(); } catch (e) { return null; }
 }
 
-function updateLastSavedText(value) {
-  lastSaved = value || new Date().toLocaleString("ko-KR");
-  const savedEl = document.getElementById("lastSaved");
-  if (savedEl) savedEl.textContent = lastSaved;
+function firebaseStatus() {
+  const ok = !!getDb();
+  firebaseReady = ok;
+  return ok;
 }
-
 
 function normalizeManagers(list) {
   return (Array.isArray(list) ? list : []).map((m, index) => ({
@@ -48,6 +44,9 @@ function normalizeManagers(list) {
   }));
 }
 
+function defaultManagers() {
+  return normalizeManagers((window.therapists || therapists || []).map(t => ({ ...t })));
+}
 
 function formatAgeText(age) {
   const value = String(age || "").trim();
@@ -67,103 +66,88 @@ function formatHeightText(height) {
 function formatBodyText(body) {
   const value = String(body || "").trim();
   if (!value) return "스펙 문의";
-
-  const parts = value
-    .replace(/,/g, " /")
-    .split(/[\/·]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
+  const parts = value.replace(/,/g, " /").split(/[\/·]/).map(p => p.trim()).filter(Boolean);
   let weight = "";
   let cup = "";
-
   parts.forEach((part) => {
     const weightMatch = part.match(/(\d{2,3})\s*(?:kg|키로)?/i);
     const cupMatch = part.match(/\b([A-F])\s*(?:컵|cup)?\b/i);
-
     if (!weight && weightMatch) weight = `${weightMatch[1]}kg`;
     if (!cup && cupMatch) cup = `${cupMatch[1].toUpperCase()}컵`;
   });
-
   if (weight && cup) return `${weight} · ${cup}`;
   if (weight) return weight;
   if (cup) return cup;
-
   return value.replace(/\s*\/\s*/g, " · ");
+}
+
+function setLastSaved(text) {
+  const savedEl = document.getElementById("lastSaved");
+  if (savedEl) savedEl.textContent = text || "-";
 }
 
 function login() {
   const id = document.getElementById("id").value.trim();
   const pw = document.getElementById("pw").value.trim();
-
-  if (id === "heetherapy" && pw === "qorrha!12") {
-    document.getElementById("loginBox").style.display = "none";
-    document.getElementById("adminWrap").style.display = "block";
-    loadAll();
-  } else {
+  if (id !== "heetherapy" || pw !== "qorrha!12") {
     alert("아이디 또는 비밀번호가 틀렸습니다.");
+    return;
   }
+  if (!firebaseStatus()) {
+    alert("Firebase 연결을 찾지 못했습니다. firebase-config.js와 admin.html 스크립트를 확인하세요.");
+    return;
+  }
+  document.getElementById("loginBox").style.display = "none";
+  document.getElementById("adminWrap").style.display = "block";
+  loadAll();
 }
 
 async function loadAll() {
-  const database = getFirebaseDB();
-  managers = normalizeManagers(therapists.map(t => ({ ...t })));
-  site = { ...DEFAULT_SITE };
-
-  if (!database) {
-    fillSiteForm();
-    renderManagers();
-    return;
-  }
-
+  const db = getDb();
   try {
-    const snapshot = await database.ref().once("value");
-    const data = snapshot.val() || {};
-
+    const snap = await db.ref("/").once("value");
+    const data = snap.val() || {};
+    managers = normalizeManagers(data.managers && data.managers.length ? data.managers : defaultManagers());
     site = { ...DEFAULT_SITE, ...(data.site || {}) };
-    managers = normalizeManagers(Array.isArray(data.managers) && data.managers.length ? data.managers : therapists.map(t => ({ ...t })));
-    lastSaved = data.meta?.lastSaved || "-";
-
-    if (!data.site) await database.ref("site").set(site);
-    if (!data.managers) await database.ref("managers").set(managers);
-    if (!data.meta) await database.ref("meta").set({ lastSaved });
-
     fillSiteForm();
     renderManagers();
+    setLastSaved(data.meta && data.meta.lastSaved ? data.meta.lastSaved : "-");
+
+    if (!data.managers || !data.site) {
+      await db.ref("/").update({
+        managers,
+        site,
+        meta: { lastSaved: new Date().toLocaleString("ko-KR") }
+      });
+    }
   } catch (error) {
-    alert("Firebase 데이터를 불러오지 못했습니다: " + (error.message || error));
-    fillSiteForm();
-    renderManagers();
+    console.error("Firebase load error", error);
+    alert("Firebase 데이터를 불러오지 못했습니다. 규칙 또는 연결을 확인하세요.");
   }
 }
 
-function saveManagers() {
-  const database = getFirebaseDB();
-  const savedAt = new Date().toLocaleString("ko-KR");
-  updateLastSavedText(savedAt);
-  renderManagers();
-
-  if (!database) return;
-  database.ref().update({
-    managers: managers,
-    meta: { lastSaved: savedAt }
-  }).catch((error) => {
-    alert("관리사 저장 실패: " + (error.message || error));
-  });
+async function saveToFirebase(payload, message) {
+  const db = getDb();
+  if (!db) {
+    alert("Firebase 연결이 없습니다.");
+    return false;
+  }
+  const lastSaved = new Date().toLocaleString("ko-KR");
+  try {
+    await db.ref("/").update({ ...payload, meta: { lastSaved } });
+    setLastSaved(lastSaved);
+    if (message) alert(message);
+    return true;
+  } catch (error) {
+    console.error("Firebase save error", error);
+    alert("저장 실패: Firebase 규칙 또는 연결을 확인하세요.");
+    return false;
+  }
 }
 
-function saveSiteStorage() {
-  const database = getFirebaseDB();
-  const savedAt = new Date().toLocaleString("ko-KR");
-  updateLastSavedText(savedAt);
-
-  if (!database) return;
-  database.ref().update({
-    site: site,
-    meta: { lastSaved: savedAt }
-  }).catch((error) => {
-    alert("기본 정보 저장 실패: " + (error.message || error));
-  });
+async function saveManagers() {
+  await saveToFirebase({ managers }, "관리사 정보가 저장되었습니다.");
+  renderManagers();
 }
 
 function fillSiteForm() {
@@ -181,7 +165,7 @@ function fillSiteForm() {
   document.getElementById("eventText2").value = site.eventText2 || "";
 }
 
-function saveSite() {
+async function saveSite() {
   site.phone = document.getElementById("sitePhone").value.trim();
   site.telegram = document.getElementById("siteTelegram").value.trim();
   site.address = document.getElementById("siteAddress").value.trim();
@@ -191,20 +175,18 @@ function saveSite() {
   site.heroDesc = document.getElementById("siteHeroDesc").value.trim();
   if (uploadedHeroImage) site.heroImage = uploadedHeroImage;
   uploadedHeroImage = "";
-  saveSiteStorage();
-  alert("기본 정보가 저장되었습니다.");
+  await saveToFirebase({ site }, "기본 정보가 저장되었습니다.");
 }
 
-function saveEvents() {
+async function saveEvents() {
   site.eventTitle1 = document.getElementById("eventTitle1").value.trim();
   site.eventText1 = document.getElementById("eventText1").value.trim();
   site.eventTitle2 = document.getElementById("eventTitle2").value.trim();
   site.eventText2 = document.getElementById("eventText2").value.trim();
-  saveSiteStorage();
-  alert("이벤트가 저장되었습니다.");
+  await saveToFirebase({ site }, "이벤트가 저장되었습니다.");
 }
 
-function saveManager() {
+async function saveManager() {
   const idValue = document.getElementById("managerId").value;
   const imagePath = uploadedImage || document.getElementById("managerImage").value.trim();
   const item = {
@@ -218,22 +200,21 @@ function saveManager() {
     intro: document.getElementById("managerIntro").value.trim(),
     image: imagePath || "assets/profiles/hihi/main.jpg"
   };
-
   if (!item.name) {
     alert("이름을 입력하세요.");
     return;
   }
-
   if (idValue) {
     const index = managers.findIndex(m => Number(m.id) === Number(idValue));
     if (index >= 0) managers[index] = item;
   } else {
     managers.push(item);
   }
-
-  saveManagers();
-  clearForm();
-  alert("관리사 정보가 저장되었습니다.");
+  const ok = await saveToFirebase({ managers }, "관리사 정보가 저장되었습니다.");
+  if (ok) {
+    clearForm();
+    renderManagers();
+  }
 }
 
 function editManager(id) {
@@ -253,38 +234,42 @@ function editManager(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function deleteManager(id) {
+async function deleteManager(id) {
   if (!confirm("삭제하시겠습니까?")) return;
   const before = managers.length;
   managers = managers.filter(m => String(m.id) !== String(id));
-
   if (managers.length === before) {
     alert("삭제할 항목을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.");
     return;
   }
-
-  saveManagers();
+  await saveManagers();
 }
 
-function moveManager(id, direction) {
+async function moveManager(id, direction) {
   const index = managers.findIndex(m => String(m.id) === String(id));
   const next = index + direction;
   if (index < 0 || next < 0 || next >= managers.length) return;
   const temp = managers[index];
   managers[index] = managers[next];
   managers[next] = temp;
-  saveManagers();
+  await saveToFirebase({ managers });
+  renderManagers();
 }
 
 function clearForm() {
-  ["managerId", "managerName", "managerAge", "managerHeight", "managerBody", "managerWork", "managerTelegram", "managerIntro", "managerImage"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("managerImageFile").value = "";
+  ["managerId", "managerName", "managerAge", "managerHeight", "managerBody", "managerWork", "managerTelegram", "managerIntro", "managerImage"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  const file = document.getElementById("managerImageFile");
+  if (file) file.value = "";
   uploadedImage = "";
   document.getElementById("imagePreview").innerHTML = "사진 미리보기";
 }
 
 function showPreview(src) {
   const preview = document.getElementById("imagePreview");
+  if (!preview) return;
   if (!src) {
     preview.innerHTML = "사진 미리보기";
     return;
@@ -295,29 +280,18 @@ function showPreview(src) {
 function renderManagers() {
   const list = document.getElementById("managerList");
   const keyword = (document.getElementById("managerSearch")?.value || "").trim();
-
   const totalEl = document.getElementById("totalManagers");
   const todayEl = document.getElementById("todayManagers");
-  const savedEl = document.getElementById("lastSaved");
-
   if (totalEl) totalEl.textContent = managers.length;
   if (todayEl) todayEl.textContent = managers.filter(m => String(m.work || "").trim()).length;
-  if (savedEl) savedEl.textContent = lastSaved || "-";
-
-  const filtered = managers.filter(m =>
-    !keyword ||
-    String(m.name || "").includes(keyword) ||
-    String(m.work || "").includes(keyword)
-  );
-
+  const filtered = managers.filter(m => !keyword || String(m.name || "").includes(keyword) || String(m.work || "").includes(keyword));
+  if (!list) return;
   if (!filtered.length) {
     list.innerHTML = `<div class="empty">검색 결과가 없습니다.</div>`;
     return;
   }
-
   list.innerHTML = filtered.map((m) => {
     const i = managers.findIndex(item => String(item.id) === String(m.id));
-
     return `
       <div class="manager-item">
         <div class="manager-photo"><img src="${m.image}" alt="${m.name}" onerror="this.parentElement.innerHTML='사진 없음'"></div>
@@ -332,8 +306,7 @@ function renderManagers() {
           <button class="small" onclick="editManager('${m.id}')">수정</button>
           <button class="small danger" onclick="deleteManager('${m.id}')">삭제</button>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join("");
 }
 
@@ -341,34 +314,24 @@ function previewHome() {
   window.open("index.html", "_blank");
 }
 
-function loadDefaultManagers() {
+async function loadDefaultManagers() {
   if (!confirm("기본 관리사 목록으로 복구할까요?")) return;
-  managers = normalizeManagers(therapists.map(t => ({ ...t })));
-  saveManagers();
+  managers = defaultManagers();
+  await saveManagers();
   clearForm();
-  alert("기본 관리사 목록으로 복구되었습니다. 홈페이지에 바로 반영됩니다.");
 }
 
-function resetAll() {
-  if (!confirm("관리자 저장 내용을 초기화할까요?")) return;
-  const database = getFirebaseDB();
-  managers = normalizeManagers(therapists.map(t => ({ ...t })));
+async function resetAll() {
+  if (!confirm("Firebase 저장 내용을 초기화하고 기본값으로 되돌릴까요?")) return;
+  managers = defaultManagers();
   site = { ...DEFAULT_SITE };
   uploadedHeroImage = "";
-  updateLastSavedText(new Date().toLocaleString("ko-KR"));
-
-  if (database) {
-    database.ref().set({
-      site: site,
-      managers: managers,
-      meta: { lastSaved: lastSaved }
-    }).catch((error) => alert("초기화 저장 실패: " + (error.message || error)));
+  const ok = await saveToFirebase({ managers, site }, "초기화되었습니다.");
+  if (ok) {
+    fillSiteForm();
+    renderManagers();
+    clearForm();
   }
-
-  fillSiteForm();
-  renderManagers();
-  clearForm();
-  alert("초기화되었습니다. 홈페이지에 바로 반영됩니다.");
 }
 
 function compressImageFile(file, maxWidth = 900, quality = 0.78) {
@@ -377,7 +340,6 @@ function compressImageFile(file, maxWidth = 900, quality = 0.78) {
       reject(new Error("이미지 파일만 사용할 수 있습니다."));
       return;
     }
-
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("사진을 읽지 못했습니다."));
     reader.onload = function (e) {
@@ -388,7 +350,6 @@ function compressImageFile(file, maxWidth = 900, quality = 0.78) {
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
-
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/jpeg", quality));
@@ -398,7 +359,6 @@ function compressImageFile(file, maxWidth = 900, quality = 0.78) {
     reader.readAsDataURL(file);
   });
 }
-
 
 function showHeroPreview(src) {
   const preview = document.getElementById("heroImagePreview");
@@ -410,44 +370,68 @@ function showHeroPreview(src) {
   preview.innerHTML = `<img src="${src}" alt="메인 사진 미리보기">`;
 }
 
-const heroFileInput = document.getElementById("siteHeroImageFile");
-if (heroFileInput) {
-  heroFileInput.addEventListener("change", async function () {
-    const file = this.files && this.files[0];
-    if (!file) return;
-    try {
-      const preview = document.getElementById("heroImagePreview");
-      preview.innerHTML = "압축 중...";
-      uploadedHeroImage = await compressImageFile(file, 1500, 0.78);
-      showHeroPreview(uploadedHeroImage);
-    } catch (error) {
-      alert(error.message || "메인 사진 처리 중 오류가 발생했습니다.");
-      this.value = "";
-      uploadedHeroImage = "";
-      showHeroPreview(site.heroImage || "");
-    }
-  });
+function initAdminEvents() {
+  const heroFileInput = document.getElementById("siteHeroImageFile");
+  if (heroFileInput) {
+    heroFileInput.addEventListener("change", async function () {
+      const file = this.files && this.files[0];
+      if (!file) return;
+      try {
+        const preview = document.getElementById("heroImagePreview");
+        preview.innerHTML = "압축 중...";
+        uploadedHeroImage = await compressImageFile(file, 1500, 0.78);
+        showHeroPreview(uploadedHeroImage);
+      } catch (error) {
+        alert(error.message || "메인 사진 처리 중 오류가 발생했습니다.");
+        this.value = "";
+        uploadedHeroImage = "";
+        showHeroPreview(site.heroImage || "");
+      }
+    });
+  }
+
+  const managerFileInput = document.getElementById("managerImageFile");
+  if (managerFileInput) {
+    managerFileInput.addEventListener("change", async function () {
+      const file = this.files && this.files[0];
+      if (!file) return;
+      try {
+        const preview = document.getElementById("imagePreview");
+        preview.innerHTML = "압축 중...";
+        uploadedImage = await compressImageFile(file);
+        document.getElementById("managerImage").value = "사진 파일 선택됨";
+        showPreview(uploadedImage);
+      } catch (error) {
+        alert(error.message || "사진 처리 중 오류가 발생했습니다.");
+        this.value = "";
+        uploadedImage = "";
+        showPreview("");
+      }
+    });
+  }
+
+  const imageInput = document.getElementById("managerImage");
+  if (imageInput) {
+    imageInput.addEventListener("input", function () {
+      uploadedImage = "";
+      showPreview(this.value.trim());
+    });
+  }
+
+  const searchInput = document.getElementById("managerSearch");
+  if (searchInput) searchInput.addEventListener("input", renderManagers);
 }
 
-document.getElementById("managerImageFile").addEventListener("change", async function () {
-  const file = this.files && this.files[0];
-  if (!file) return;
+window.login = login;
+window.saveSite = saveSite;
+window.saveEvents = saveEvents;
+window.saveManager = saveManager;
+window.editManager = editManager;
+window.deleteManager = deleteManager;
+window.moveManager = moveManager;
+window.clearForm = clearForm;
+window.previewHome = previewHome;
+window.loadDefaultManagers = loadDefaultManagers;
+window.resetAll = resetAll;
 
-  try {
-    const preview = document.getElementById("imagePreview");
-    preview.innerHTML = "압축 중...";
-    uploadedImage = await compressImageFile(file);
-    document.getElementById("managerImage").value = "사진 파일 선택됨";
-    showPreview(uploadedImage);
-  } catch (error) {
-    alert(error.message || "사진 처리 중 오류가 발생했습니다.");
-    this.value = "";
-    uploadedImage = "";
-    showPreview("");
-  }
-});
-
-document.getElementById("managerImage").addEventListener("input", function () {
-  uploadedImage = "";
-  showPreview(this.value.trim());
-});
+document.addEventListener("DOMContentLoaded", initAdminEvents);
