@@ -2,6 +2,7 @@ let managers = [];
 let site = {};
 let uploadedImage = "";
 let uploadedHeroImage = "";
+let lastSaved = "-";
 
 const DEFAULT_SITE = {
   phone: "010-7255-2248",
@@ -18,14 +19,20 @@ const DEFAULT_SITE = {
   eventText2: "관리사 출근 현황을 실시간으로 확인하세요."
 };
 
-function getSavedJSON(key, fallback) {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
-  } catch (e) {
-    return fallback;
+function getFirebaseDB() {
+  if (!window.db) {
+    alert("Firebase 연결을 찾지 못했습니다. firebase-config.js와 admin.html 스크립트를 확인하세요.");
+    return null;
   }
+  return window.db;
 }
+
+function updateLastSavedText(value) {
+  lastSaved = value || new Date().toLocaleString("ko-KR");
+  const savedEl = document.getElementById("lastSaved");
+  if (savedEl) savedEl.textContent = lastSaved;
+}
+
 
 function normalizeManagers(list) {
   return (Array.isArray(list) ? list : []).map((m, index) => ({
@@ -98,23 +105,65 @@ function login() {
   }
 }
 
-function loadAll() {
-  managers = normalizeManagers(getSavedJSON("heetherapyManagers", therapists.map(t => ({ ...t }))));
-  localStorage.setItem("heetherapyManagers", JSON.stringify(managers));
-  site = { ...DEFAULT_SITE, ...getSavedJSON("heetherapySite", {}) };
-  fillSiteForm();
-  renderManagers();
+async function loadAll() {
+  const database = getFirebaseDB();
+  managers = normalizeManagers(therapists.map(t => ({ ...t })));
+  site = { ...DEFAULT_SITE };
+
+  if (!database) {
+    fillSiteForm();
+    renderManagers();
+    return;
+  }
+
+  try {
+    const snapshot = await database.ref().once("value");
+    const data = snapshot.val() || {};
+
+    site = { ...DEFAULT_SITE, ...(data.site || {}) };
+    managers = normalizeManagers(Array.isArray(data.managers) && data.managers.length ? data.managers : therapists.map(t => ({ ...t })));
+    lastSaved = data.meta?.lastSaved || "-";
+
+    if (!data.site) await database.ref("site").set(site);
+    if (!data.managers) await database.ref("managers").set(managers);
+    if (!data.meta) await database.ref("meta").set({ lastSaved });
+
+    fillSiteForm();
+    renderManagers();
+  } catch (error) {
+    alert("Firebase 데이터를 불러오지 못했습니다: " + (error.message || error));
+    fillSiteForm();
+    renderManagers();
+  }
 }
 
-function saveManagers() {  
-  localStorage.setItem("heetherapyManagers", JSON.stringify(managers));
-  localStorage.setItem("heetherapyLastSaved", new Date().toLocaleString("ko-KR"));
+function saveManagers() {
+  const database = getFirebaseDB();
+  const savedAt = new Date().toLocaleString("ko-KR");
+  updateLastSavedText(savedAt);
   renderManagers();
+
+  if (!database) return;
+  database.ref().update({
+    managers: managers,
+    meta: { lastSaved: savedAt }
+  }).catch((error) => {
+    alert("관리사 저장 실패: " + (error.message || error));
+  });
 }
 
 function saveSiteStorage() {
-  localStorage.setItem("heetherapySite", JSON.stringify(site));
-  localStorage.setItem("heetherapyLastSaved", new Date().toLocaleString("ko-KR"));
+  const database = getFirebaseDB();
+  const savedAt = new Date().toLocaleString("ko-KR");
+  updateLastSavedText(savedAt);
+
+  if (!database) return;
+  database.ref().update({
+    site: site,
+    meta: { lastSaved: savedAt }
+  }).catch((error) => {
+    alert("기본 정보 저장 실패: " + (error.message || error));
+  });
 }
 
 function fillSiteForm() {
@@ -253,7 +302,7 @@ function renderManagers() {
 
   if (totalEl) totalEl.textContent = managers.length;
   if (todayEl) todayEl.textContent = managers.filter(m => String(m.work || "").trim()).length;
-  if (savedEl) savedEl.textContent = localStorage.getItem("heetherapyLastSaved") || "-";
+  if (savedEl) savedEl.textContent = lastSaved || "-";
 
   const filtered = managers.filter(m =>
     !keyword ||
@@ -297,20 +346,29 @@ function loadDefaultManagers() {
   managers = normalizeManagers(therapists.map(t => ({ ...t })));
   saveManagers();
   clearForm();
-  alert("기본 관리사 목록으로 복구되었습니다. 홈페이지를 새로고침하세요.");
+  alert("기본 관리사 목록으로 복구되었습니다. 홈페이지에 바로 반영됩니다.");
 }
 
 function resetAll() {
   if (!confirm("관리자 저장 내용을 초기화할까요?")) return;
-  localStorage.removeItem("heetherapyManagers");
-  localStorage.removeItem("heetherapySite");
+  const database = getFirebaseDB();
   managers = normalizeManagers(therapists.map(t => ({ ...t })));
   site = { ...DEFAULT_SITE };
   uploadedHeroImage = "";
+  updateLastSavedText(new Date().toLocaleString("ko-KR"));
+
+  if (database) {
+    database.ref().set({
+      site: site,
+      managers: managers,
+      meta: { lastSaved: lastSaved }
+    }).catch((error) => alert("초기화 저장 실패: " + (error.message || error)));
+  }
+
   fillSiteForm();
   renderManagers();
   clearForm();
-  alert("초기화되었습니다. 홈페이지를 새로고침하세요.");
+  alert("초기화되었습니다. 홈페이지에 바로 반영됩니다.");
 }
 
 function compressImageFile(file, maxWidth = 900, quality = 0.78) {
