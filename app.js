@@ -26,7 +26,15 @@ function firebaseDb() {
 }
 
 function normalizeManagers(list) {
-  return (Array.isArray(list) ? list : []).filter(Boolean).map((m, index) => ({
+  // Firebase Realtime Database can return arrays OR objects.
+  // Convert object data like {"123": {...}, "456": {...}} into an array first.
+  let arr = [];
+  if (Array.isArray(list)) {
+    arr = list;
+  } else if (list && typeof list === "object") {
+    arr = Object.keys(list).map((key) => ({ id: list[key]?.id || key, ...(list[key] || {}) }));
+  }
+  return arr.filter(Boolean).map((m, index) => ({
     id: m.id || Date.now() + index,
     name: m.name || "",
     age: m.age || "",
@@ -40,7 +48,8 @@ function normalizeManagers(list) {
 }
 
 function fallbackManagers() {
-  return normalizeManagers((window.therapists || therapists || []).map(t => ({ ...t })));
+  const fallback = window.therapists || (typeof therapists !== "undefined" ? therapists : []);
+  return normalizeManagers(fallback.map(t => ({ ...t })));
 }
 
 function formatAge(age) {
@@ -214,7 +223,7 @@ function startFirebase() {
   database.ref("/").on("value", (snapshot) => {
     const data = snapshot.val() || {};
     site = { ...DEFAULT_SITE, ...(data.site || {}) };
-    activeTherapists = normalizeManagers(data.managers && data.managers.length ? data.managers : fallbackManagers());
+    activeTherapists = normalizeManagers(data.managers || fallbackManagers());
     renderAll();
   }, (error) => {
     console.error("Firebase 읽기 실패", error);
