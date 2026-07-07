@@ -2,7 +2,7 @@ let managers = [];
 let site = {};
 let uploadedImage = "";
 let uploadedHeroImage = "";
-let firebaseReady = false;
+let isLoaded = false;
 
 const DEFAULT_SITE = {
   phone: "010-7255-2248",
@@ -19,19 +19,15 @@ const DEFAULT_SITE = {
   eventText2: "관리사 출근 현황을 실시간으로 확인하세요."
 };
 
-function getDb() {
-  if (typeof firebase === "undefined" || !firebase.database) return null;
-  try { return firebase.database(); } catch (e) { return null; }
-}
-
-function firebaseStatus() {
-  const ok = !!getDb();
-  firebaseReady = ok;
-  return ok;
+function firebaseDb() {
+  if (typeof db !== "undefined") return db;
+  if (window.db) return window.db;
+  if (window.firebase && firebase.database) return firebase.database();
+  return null;
 }
 
 function normalizeManagers(list) {
-  return (Array.isArray(list) ? list : []).map((m, index) => ({
+  return (Array.isArray(list) ? list : []).filter(Boolean).map((m, index) => ({
     id: m.id || Date.now() + index,
     name: m.name || "",
     age: m.age || "",
@@ -66,7 +62,7 @@ function formatHeightText(height) {
 function formatBodyText(body) {
   const value = String(body || "").trim();
   if (!value) return "스펙 문의";
-  const parts = value.replace(/,/g, " /").split(/[\/·]/).map(p => p.trim()).filter(Boolean);
+  const parts = value.replace(/,/g, " /").split(/[\/·]/).map(part => part.trim()).filter(Boolean);
   let weight = "";
   let cup = "";
   parts.forEach((part) => {
@@ -81,20 +77,11 @@ function formatBodyText(body) {
   return value.replace(/\s*\/\s*/g, " · ");
 }
 
-function setLastSaved(text) {
-  const savedEl = document.getElementById("lastSaved");
-  if (savedEl) savedEl.textContent = text || "-";
-}
-
 function login() {
   const id = document.getElementById("id").value.trim();
   const pw = document.getElementById("pw").value.trim();
   if (id !== "heetherapy" || pw !== "qorrha!12") {
     alert("아이디 또는 비밀번호가 틀렸습니다.");
-    return;
-  }
-  if (!firebaseStatus()) {
-    alert("Firebase 연결을 찾지 못했습니다. firebase-config.js와 admin.html 스크립트를 확인하세요.");
     return;
   }
   document.getElementById("loginBox").style.display = "none";
@@ -103,51 +90,46 @@ function login() {
 }
 
 async function loadAll() {
-  const db = getDb();
+  const database = firebaseDb();
+  if (!database) {
+    alert("Firebase 연결을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.");
+    return;
+  }
+
   try {
-    const snap = await db.ref("/").once("value");
+    const snap = await database.ref("/").once("value");
     const data = snap.val() || {};
-    managers = normalizeManagers(data.managers && data.managers.length ? data.managers : defaultManagers());
     site = { ...DEFAULT_SITE, ...(data.site || {}) };
-    fillSiteForm();
-    renderManagers();
-    setLastSaved(data.meta && data.meta.lastSaved ? data.meta.lastSaved : "-");
+    managers = normalizeManagers(data.managers && data.managers.length ? data.managers : defaultManagers());
 
-    if (!data.managers || !data.site) {
-      await db.ref("/").update({
-        managers,
-        site,
-        meta: { lastSaved: new Date().toLocaleString("ko-KR") }
-      });
+    if (!data.site || !data.managers) {
+      await database.ref("/").update({ site, managers, lastSaved: new Date().toLocaleString("ko-KR") });
     }
+
+    isLoaded = true;
+    fillSiteForm();
+    renderManagers(data.lastSaved || "-");
   } catch (error) {
-    console.error("Firebase load error", error);
-    alert("Firebase 데이터를 불러오지 못했습니다. 규칙 또는 연결을 확인하세요.");
+    console.error(error);
+    alert("Firebase 데이터를 불러오지 못했습니다. Console 오류를 확인해주세요.");
   }
 }
 
-async function saveToFirebase(payload, message) {
-  const db = getDb();
-  if (!db) {
-    alert("Firebase 연결이 없습니다.");
-    return false;
+async function saveAll(successMessage) {
+  const database = firebaseDb();
+  if (!database) {
+    alert("Firebase 연결을 찾지 못했습니다.");
+    return;
   }
-  const lastSaved = new Date().toLocaleString("ko-KR");
   try {
-    await db.ref("/").update({ ...payload, meta: { lastSaved } });
-    setLastSaved(lastSaved);
-    if (message) alert(message);
-    return true;
+    const lastSaved = new Date().toLocaleString("ko-KR");
+    await database.ref("/").update({ site, managers, lastSaved });
+    renderManagers(lastSaved);
+    if (successMessage) alert(successMessage);
   } catch (error) {
-    console.error("Firebase save error", error);
-    alert("저장 실패: Firebase 규칙 또는 연결을 확인하세요.");
-    return false;
+    console.error(error);
+    alert("저장 실패: Firebase 규칙 또는 연결 상태를 확인해주세요.");
   }
-}
-
-async function saveManagers() {
-  await saveToFirebase({ managers }, "관리사 정보가 저장되었습니다.");
-  renderManagers();
 }
 
 function fillSiteForm() {
@@ -165,7 +147,7 @@ function fillSiteForm() {
   document.getElementById("eventText2").value = site.eventText2 || "";
 }
 
-async function saveSite() {
+function saveSite() {
   site.phone = document.getElementById("sitePhone").value.trim();
   site.telegram = document.getElementById("siteTelegram").value.trim();
   site.address = document.getElementById("siteAddress").value.trim();
@@ -175,18 +157,18 @@ async function saveSite() {
   site.heroDesc = document.getElementById("siteHeroDesc").value.trim();
   if (uploadedHeroImage) site.heroImage = uploadedHeroImage;
   uploadedHeroImage = "";
-  await saveToFirebase({ site }, "기본 정보가 저장되었습니다.");
+  saveAll("기본 정보가 Firebase에 저장되었습니다.");
 }
 
-async function saveEvents() {
+function saveEvents() {
   site.eventTitle1 = document.getElementById("eventTitle1").value.trim();
   site.eventText1 = document.getElementById("eventText1").value.trim();
   site.eventTitle2 = document.getElementById("eventTitle2").value.trim();
   site.eventText2 = document.getElementById("eventText2").value.trim();
-  await saveToFirebase({ site }, "이벤트가 저장되었습니다.");
+  saveAll("이벤트가 Firebase에 저장되었습니다.");
 }
 
-async function saveManager() {
+function saveManager() {
   const idValue = document.getElementById("managerId").value;
   const imagePath = uploadedImage || document.getElementById("managerImage").value.trim();
   const item = {
@@ -198,23 +180,23 @@ async function saveManager() {
     work: document.getElementById("managerWork").value.trim(),
     telegram: document.getElementById("managerTelegram").value.trim() || site.telegram || DEFAULT_SITE.telegram,
     intro: document.getElementById("managerIntro").value.trim(),
-    image: imagePath || "assets/profiles/hihi/main.jpg"
+    image: imagePath === "사진 파일 선택됨" ? "" : imagePath
   };
+
   if (!item.name) {
-    alert("이름을 입력하세요.");
+    alert("관리사 이름을 입력해주세요.");
     return;
   }
+
   if (idValue) {
-    const index = managers.findIndex(m => Number(m.id) === Number(idValue));
+    const index = managers.findIndex(m => String(m.id) === String(idValue));
     if (index >= 0) managers[index] = item;
   } else {
     managers.push(item);
   }
-  const ok = await saveToFirebase({ managers }, "관리사 정보가 저장되었습니다.");
-  if (ok) {
-    clearForm();
-    renderManagers();
-  }
+
+  saveAll("관리사 정보가 Firebase에 저장되었습니다.");
+  clearForm();
 }
 
 function editManager(id) {
@@ -234,42 +216,31 @@ function editManager(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-async function deleteManager(id) {
+function deleteManager(id) {
   if (!confirm("삭제하시겠습니까?")) return;
-  const before = managers.length;
   managers = managers.filter(m => String(m.id) !== String(id));
-  if (managers.length === before) {
-    alert("삭제할 항목을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.");
-    return;
-  }
-  await saveManagers();
+  saveAll("삭제되었습니다.");
 }
 
-async function moveManager(id, direction) {
+function moveManager(id, direction) {
   const index = managers.findIndex(m => String(m.id) === String(id));
   const next = index + direction;
   if (index < 0 || next < 0 || next >= managers.length) return;
   const temp = managers[index];
   managers[index] = managers[next];
   managers[next] = temp;
-  await saveToFirebase({ managers });
-  renderManagers();
+  saveAll("");
 }
 
 function clearForm() {
-  ["managerId", "managerName", "managerAge", "managerHeight", "managerBody", "managerWork", "managerTelegram", "managerIntro", "managerImage"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
-  const file = document.getElementById("managerImageFile");
-  if (file) file.value = "";
+  ["managerId", "managerName", "managerAge", "managerHeight", "managerBody", "managerWork", "managerTelegram", "managerIntro", "managerImage"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("managerImageFile").value = "";
   uploadedImage = "";
   document.getElementById("imagePreview").innerHTML = "사진 미리보기";
 }
 
 function showPreview(src) {
   const preview = document.getElementById("imagePreview");
-  if (!preview) return;
   if (!src) {
     preview.innerHTML = "사진 미리보기";
     return;
@@ -277,24 +248,24 @@ function showPreview(src) {
   preview.innerHTML = `<img src="${src}" alt="미리보기">`;
 }
 
-function renderManagers() {
+function renderManagers(lastSaved = "-") {
   const list = document.getElementById("managerList");
   const keyword = (document.getElementById("managerSearch")?.value || "").trim();
-  const totalEl = document.getElementById("totalManagers");
-  const todayEl = document.getElementById("todayManagers");
-  if (totalEl) totalEl.textContent = managers.length;
-  if (todayEl) todayEl.textContent = managers.filter(m => String(m.work || "").trim()).length;
+  document.getElementById("totalManagers").textContent = managers.length;
+  document.getElementById("todayManagers").textContent = managers.filter(m => String(m.work || "").trim()).length;
+  document.getElementById("lastSaved").textContent = lastSaved;
+
   const filtered = managers.filter(m => !keyword || String(m.name || "").includes(keyword) || String(m.work || "").includes(keyword));
-  if (!list) return;
   if (!filtered.length) {
     list.innerHTML = `<div class="empty">검색 결과가 없습니다.</div>`;
     return;
   }
+
   list.innerHTML = filtered.map((m) => {
     const i = managers.findIndex(item => String(item.id) === String(m.id));
     return `
       <div class="manager-item">
-        <div class="manager-photo"><img src="${m.image}" alt="${m.name}" onerror="this.parentElement.innerHTML='사진 없음'"></div>
+        <div class="manager-photo"><img src="${m.image || ''}" alt="${m.name}" onerror="this.parentElement.innerHTML='사진 없음'"></div>
         <div class="manager-text">
           <strong>${m.name}</strong>
           <span>${formatAgeText(m.age)} · ${formatHeightText(m.height)} · ${formatBodyText(m.body)}</span>
@@ -314,27 +285,25 @@ function previewHome() {
   window.open("index.html", "_blank");
 }
 
-async function loadDefaultManagers() {
+function loadDefaultManagers() {
   if (!confirm("기본 관리사 목록으로 복구할까요?")) return;
   managers = defaultManagers();
-  await saveManagers();
+  saveAll("기본 관리사 목록으로 복구되었습니다.");
   clearForm();
 }
 
-async function resetAll() {
+function resetAll() {
   if (!confirm("Firebase 저장 내용을 초기화하고 기본값으로 되돌릴까요?")) return;
-  managers = defaultManagers();
   site = { ...DEFAULT_SITE };
+  managers = defaultManagers();
   uploadedHeroImage = "";
-  const ok = await saveToFirebase({ managers, site }, "초기화되었습니다.");
-  if (ok) {
-    fillSiteForm();
-    renderManagers();
-    clearForm();
-  }
+  fillSiteForm();
+  renderManagers();
+  clearForm();
+  saveAll("초기화되었습니다.");
 }
 
-function compressImageFile(file, maxWidth = 900, quality = 0.78) {
+function compressImageFile(file, maxWidth = 900, quality = 0.72) {
   return new Promise((resolve, reject) => {
     if (!file || !file.type.startsWith("image/")) {
       reject(new Error("이미지 파일만 사용할 수 있습니다."));
@@ -370,16 +339,18 @@ function showHeroPreview(src) {
   preview.innerHTML = `<img src="${src}" alt="메인 사진 미리보기">`;
 }
 
-function initAdminEvents() {
+document.addEventListener("DOMContentLoaded", () => {
+  const search = document.getElementById("managerSearch");
+  if (search) search.addEventListener("input", () => renderManagers());
+
   const heroFileInput = document.getElementById("siteHeroImageFile");
   if (heroFileInput) {
     heroFileInput.addEventListener("change", async function () {
       const file = this.files && this.files[0];
       if (!file) return;
       try {
-        const preview = document.getElementById("heroImagePreview");
-        preview.innerHTML = "압축 중...";
-        uploadedHeroImage = await compressImageFile(file, 1500, 0.78);
+        document.getElementById("heroImagePreview").innerHTML = "압축 중...";
+        uploadedHeroImage = await compressImageFile(file, 1500, 0.72);
         showHeroPreview(uploadedHeroImage);
       } catch (error) {
         alert(error.message || "메인 사진 처리 중 오류가 발생했습니다.");
@@ -390,14 +361,13 @@ function initAdminEvents() {
     });
   }
 
-  const managerFileInput = document.getElementById("managerImageFile");
-  if (managerFileInput) {
-    managerFileInput.addEventListener("change", async function () {
+  const managerImageFile = document.getElementById("managerImageFile");
+  if (managerImageFile) {
+    managerImageFile.addEventListener("change", async function () {
       const file = this.files && this.files[0];
       if (!file) return;
       try {
-        const preview = document.getElementById("imagePreview");
-        preview.innerHTML = "압축 중...";
+        document.getElementById("imagePreview").innerHTML = "압축 중...";
         uploadedImage = await compressImageFile(file);
         document.getElementById("managerImage").value = "사진 파일 선택됨";
         showPreview(uploadedImage);
@@ -410,28 +380,11 @@ function initAdminEvents() {
     });
   }
 
-  const imageInput = document.getElementById("managerImage");
-  if (imageInput) {
-    imageInput.addEventListener("input", function () {
+  const managerImage = document.getElementById("managerImage");
+  if (managerImage) {
+    managerImage.addEventListener("input", function () {
       uploadedImage = "";
       showPreview(this.value.trim());
     });
   }
-
-  const searchInput = document.getElementById("managerSearch");
-  if (searchInput) searchInput.addEventListener("input", renderManagers);
-}
-
-window.login = login;
-window.saveSite = saveSite;
-window.saveEvents = saveEvents;
-window.saveManager = saveManager;
-window.editManager = editManager;
-window.deleteManager = deleteManager;
-window.moveManager = moveManager;
-window.clearForm = clearForm;
-window.previewHome = previewHome;
-window.loadDefaultManagers = loadDefaultManagers;
-window.resetAll = resetAll;
-
-document.addEventListener("DOMContentLoaded", initAdminEvents);
+});

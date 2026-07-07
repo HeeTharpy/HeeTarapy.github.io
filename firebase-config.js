@@ -1,5 +1,5 @@
 const firebaseConfig = {
-  apiKey: "AIzaSyAdLIf1AGwVMVV9jLKS8PePp-A12gSPzJA",
+  apiKey: "AIzaSyAdLIflAGWVMVV9ilKS8PePp-A12gSPzJA",
   authDomain: "heetherapy.firebaseapp.com",
   databaseURL: "https://heetherapy-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "heetherapy",
@@ -9,8 +9,9 @@ const firebaseConfig = {
   measurementId: "G-TS7HT29NWF"
 };
 
-if (typeof firebase !== "undefined" && !firebase.apps.length) {
+if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
-
-window.db = firebase.database();
+const db = firebase.database();
+window.db = db;
+window.firebaseReady = true;

@@ -1,3 +1,8 @@
+const $ = (selector) => document.querySelector(selector);
+let activeTherapists = [];
+let site = {};
+let currentProfileIndex = -1;
+
 const DEFAULT_SITE = {
   phone: "010-7255-2248",
   telegram: "https://t.me/wh2248",
@@ -13,22 +18,16 @@ const DEFAULT_SITE = {
   eventText2: "관리사 출근 현황을 실시간으로 확인하세요."
 };
 
-let site = { ...DEFAULT_SITE };
-let activeTherapists = [];
-let currentProfileIndex = -1;
-
-function $(selector) {
-  return document.querySelector(selector);
-}
-
-function getDb() {
-  if (typeof firebase === "undefined" || !firebase.database) return null;
-  try { return firebase.database(); } catch (e) { return null; }
+function firebaseDb() {
+  if (typeof db !== "undefined") return db;
+  if (window.db) return window.db;
+  if (window.firebase && firebase.database) return firebase.database();
+  return null;
 }
 
 function normalizeManagers(list) {
-  return (Array.isArray(list) ? list : []).map((m, index) => ({
-    id: m.id || index + 1,
+  return (Array.isArray(list) ? list : []).filter(Boolean).map((m, index) => ({
+    id: m.id || Date.now() + index,
     name: m.name || "",
     age: m.age || "",
     height: m.height || "",
@@ -38,6 +37,10 @@ function normalizeManagers(list) {
     intro: m.intro || m.desc || "",
     image: m.image || ""
   }));
+}
+
+function fallbackManagers() {
+  return normalizeManagers((window.therapists || therapists || []).map(t => ({ ...t })));
 }
 
 function formatAge(age) {
@@ -58,7 +61,7 @@ function formatHeight(height) {
 function formatBody(body) {
   const value = String(body || "").trim();
   if (!value) return "스펙 문의";
-  const parts = value.replace(/,/g, " /").split(/[\/·]/).map((part) => part.trim()).filter(Boolean);
+  const parts = value.replace(/,/g, " /").split(/[\/·]/).map(part => part.trim()).filter(Boolean);
   let weight = "";
   let cup = "";
   parts.forEach((part) => {
@@ -83,25 +86,19 @@ function updateText(selector, text) {
 }
 
 function updateLinks() {
-  document.querySelectorAll('a[href^="tel:"]').forEach((a) => {
-    a.href = `tel:${String(site.phone || "").replace(/[^0-9]/g, "")}`;
-  });
-  document.querySelectorAll('a[href^="https://t.me/"]').forEach((a) => {
-    a.href = site.telegram || DEFAULT_SITE.telegram;
-  });
-
+  const phoneNumber = String(site.phone || DEFAULT_SITE.phone).replace(/[^0-9]/g, "");
+  document.querySelectorAll('a[href^="tel:"]').forEach((a) => a.href = `tel:${phoneNumber}`);
+  document.querySelectorAll('a[href^="https://t.me/"]').forEach((a) => a.href = site.telegram || DEFAULT_SITE.telegram);
   updateText(".hero h1", site.heroTitle);
   updateText(".hero h2", site.heroSubTitle);
   updateText(".hero-desc", site.heroDesc);
   updateText("#addressText", site.address);
   updateText("#hoursText", site.hours);
   updateText("#phoneText", site.phone);
-
   const heroBg = $(".hero-bg");
   if (heroBg && site.heroImage) {
     heroBg.style.backgroundImage = `linear-gradient(rgba(0,0,0,.58),rgba(0,0,0,.76)), url('${site.heroImage}')`;
   }
-
   const footer = document.querySelector(".footer p");
   if (footer) footer.textContent = `${site.address} · ${site.phone} · ${site.hours}`;
 }
@@ -109,12 +106,8 @@ function updateLinks() {
 function renderTherapists() {
   const therapistGrid = $("#therapistGrid");
   if (!therapistGrid) return;
-  if (!activeTherapists.length) {
-    therapistGrid.innerHTML = `<div class="empty">관리사 정보 준비 중입니다.</div>`;
-    return;
-  }
   therapistGrid.innerHTML = activeTherapists.map((item) => `
-    <article class="therapist-card" onclick="openProfile('${item.id}')">
+    <article class="therapist-card" onclick="openProfile(${item.id})">
       <div class="thumb"><img src="${safeImage(item.image)}" alt="${item.name}" onerror="this.parentElement.classList.add('no-image'); this.remove();"></div>
       <div class="therapist-info">
         <h3>${item.name}</h3>
@@ -138,6 +131,7 @@ function renderProfile(index) {
   if (!activeTherapists.length) return;
   currentProfileIndex = (index + activeTherapists.length) % activeTherapists.length;
   const item = activeTherapists[currentProfileIndex];
+  const phoneNumber = String(site.phone || DEFAULT_SITE.phone).replace(/[^0-9]/g, "");
   const modalContent = $("#modalContent");
   if (!modalContent) return;
   modalContent.innerHTML = `
@@ -153,14 +147,11 @@ function renderProfile(index) {
           <div><b>키</b><span>${formatHeight(item.height)}</span></div>
           <div><b>스펙</b><span>${formatBody(item.body)}</span></div>
         </div>
-        <div class="premium-work">
-          <small>출근시간</small>
-          <strong>${item.work || "문의"}</strong>
-        </div>
-        <p class="premium-intro">${String(getProfileIntro(item)).replace(/\n/g, "<br>")}</p>
+        <div class="premium-work"><small>출근시간</small><strong>${item.work || "문의"}</strong></div>
+        <p class="premium-intro">${getProfileIntro(item)}</p>
         <div class="premium-actions">
           <a class="btn gold" href="${item.telegram || site.telegram}" target="_blank">텔레그램 예약</a>
-          <a class="btn dark" href="tel:${String(site.phone || "").replace(/[^0-9]/g, "")}">전화예약</a>
+          <a class="btn dark" href="tel:${phoneNumber}">전화예약</a>
         </div>
         <div class="profile-nav-actions">
           <button type="button" onclick="changeProfile(-1)">← 이전 관리사</button>
@@ -171,11 +162,10 @@ function renderProfile(index) {
 }
 
 function openProfile(id) {
-  const index = activeTherapists.findIndex(t => String(t.id) === String(id));
+  const index = activeTherapists.findIndex(t => Number(t.id) === Number(id));
   if (index < 0) return;
   renderProfile(index);
-  const modal = $("#profileModal");
-  if (modal) modal.classList.add("show");
+  $("#profileModal").classList.add("show");
 }
 
 function changeProfile(direction) {
@@ -184,36 +174,23 @@ function changeProfile(direction) {
 
 function renderCourse() {
   const courseGrid = $("#courseGrid");
-  if (!courseGrid) return;
-  courseGrid.innerHTML = `<article class="course-card"><p>PREMIUM</p><h3>60분 프리미엄 코스</h3><strong>170,000원</strong><span>프리미엄 스웨디시 테라피</span></article><article class="course-card"><p>WAXING</p><h3>왁싱 코스</h3><strong>문의</strong><span>하루 전 예약 진행</span></article>`;
+  if (courseGrid) {
+    courseGrid.innerHTML = `<article class="course-card"><p>PREMIUM</p><h3>60분 프리미엄 코스</h3><strong>170,000원</strong><span>프리미엄 스웨디시 테라피</span></article><article class="course-card"><p>WAXING</p><h3>왁싱 코스</h3><strong>문의</strong><span>하루 전 예약 진행</span></article>`;
+  }
 }
 
 function renderTodaySchedule() {
   const todayWorkers = activeTherapists.filter(item => item.work && item.work.trim());
   if (!todayWorkers.length) return `<p>오늘 출근 정보는 텔레그램에서 확인해주세요.</p>`;
-  return `
-    <div class="today-schedule">
-      ${todayWorkers.map(item => `
-        <div class="schedule-row">
-          <strong>${item.name}</strong>
-          <span>${item.work}</span>
-        </div>
-      `).join("")}
-    </div>`;
+  return `<div class="today-schedule">${todayWorkers.map(item => `<div class="schedule-row"><strong>${item.name}</strong><span>${item.work}</span></div>`).join("")}</div>`;
 }
 
 function renderEvents() {
   const eventGrid = $("#eventGrid");
   if (!eventGrid) return;
   eventGrid.innerHTML = `
-    <article class="event-card">
-      <h3>${site.eventTitle1 || "실시간 예약 가능"}</h3>
-      <div class="event-text">${String(site.eventText1 || "").replace(/\n/g, "<br>")}</div>
-    </article>
-    <article class="event-card">
-      <h3>${site.eventTitle2 || "오늘의 출근부"}</h3>
-      ${renderTodaySchedule()}
-    </article>`;
+    <article class="event-card"><h3>${site.eventTitle1}</h3><div class="event-text">${String(site.eventText1 || "").replace(/\n/g, "<br>")}</div></article>
+    <article class="event-card"><h3>${site.eventTitle2}</h3>${renderTodaySchedule()}</article>`;
 }
 
 function renderAll() {
@@ -223,38 +200,31 @@ function renderAll() {
   renderEvents();
 }
 
-function initModal() {
+function startFirebase() {
+  site = { ...DEFAULT_SITE };
+  activeTherapists = fallbackManagers();
+  renderAll();
+
+  const database = firebaseDb();
+  if (!database) {
+    console.error("Firebase 연결을 찾지 못했습니다.");
+    return;
+  }
+
+  database.ref("/").on("value", (snapshot) => {
+    const data = snapshot.val() || {};
+    site = { ...DEFAULT_SITE, ...(data.site || {}) };
+    activeTherapists = normalizeManagers(data.managers && data.managers.length ? data.managers : fallbackManagers());
+    renderAll();
+  }, (error) => {
+    console.error("Firebase 읽기 실패", error);
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
   const closeBtn = $("#closeModal");
   if (closeBtn) closeBtn.addEventListener("click", () => $("#profileModal").classList.remove("show"));
   const modal = $("#profileModal");
   if (modal) modal.addEventListener("click", (e) => { if (e.target.id === "profileModal") modal.classList.remove("show"); });
-}
-
-function initFirebaseRealtime() {
-  const db = getDb();
-  if (!db) {
-    console.error("Firebase 연결 실패: SDK 또는 firebase-config.js 확인 필요");
-    activeTherapists = normalizeManagers(window.therapists || therapists || []);
-    renderAll();
-    return;
-  }
-
-  db.ref("/").on("value", (snap) => {
-    const data = snap.val() || {};
-    site = { ...DEFAULT_SITE, ...(data.site || {}) };
-    activeTherapists = normalizeManagers(data.managers && data.managers.length ? data.managers : (window.therapists || therapists || []));
-    renderAll();
-  }, (error) => {
-    console.error("Firebase 읽기 실패", error);
-    activeTherapists = normalizeManagers(window.therapists || therapists || []);
-    renderAll();
-  });
-}
-
-window.openProfile = openProfile;
-window.changeProfile = changeProfile;
-
-document.addEventListener("DOMContentLoaded", () => {
-  initModal();
-  initFirebaseRealtime();
+  startFirebase();
 });
