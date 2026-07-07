@@ -53,3 +53,7 @@
     grid-template-columns:1fr;
   }
 }
+/* V2.0 gallery admin */
+.extra-photo-box{margin-top:12px;border:1px dashed rgba(217,181,90,.25);border-radius:16px;padding:14px;background:rgba(0,0,0,.12)}
+.photo-gallery-preview{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}.photo-gallery-preview div{position:relative;border-radius:12px;overflow:hidden;background:#111;min-height:92px}.photo-gallery-preview img{width:100%;height:92px;object-fit:cover;display:block}.photo-gallery-preview span{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.65);color:#e6c05d;border-radius:999px;padding:3px 7px;font-size:11px;font-weight:900}
+@media(max-width:700px){.photo-gallery-preview{grid-template-columns:repeat(2,1fr)}}

@@ -262,3 +262,11 @@
 }
 
 }
+/* V2.0 gallery - minimal add-on */
+.gallery-photo{position:relative;cursor:zoom-in}
+.photo-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:42px;height:42px;border:0;border-radius:50%;background:rgba(0,0,0,.58);color:#e6c05d;font-size:32px;line-height:1;cursor:pointer}
+.photo-arrow.left{left:14px}.photo-arrow.right{right:14px}
+.photo-count{position:absolute;left:50%;bottom:48px;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:900}
+.photo-dots{position:absolute;left:0;right:0;bottom:18px;display:flex;justify-content:center;gap:7px}
+.photo-dots button{width:9px;height:9px;border:0;border-radius:50%;background:rgba(255,255,255,.45);padding:0;cursor:pointer}.photo-dots button.active{background:#e6c05d}
+.photo-zoom{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:18px;cursor:zoom-out}.photo-zoom img{max-width:96vw;max-height:92vh;object-fit:contain}.photo-zoom button{position:absolute;right:20px;top:18px;width:44px;height:44px;border:0;border-radius:50%;background:#e6c05d;color:#111;font-size:30px;font-weight:900;cursor:pointer}

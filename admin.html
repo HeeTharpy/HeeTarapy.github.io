@@ -52,9 +52,17 @@
       <input id="managerTelegram" placeholder="텔레그램 링크">
     </div>
     <textarea id="managerIntro" placeholder="소개글 예: 밝고 편안한 분위기로 정성껏 관리해드립니다."></textarea>
-    <input id="managerImage" placeholder="사진 경로 예: assets/profiles/hihi/main.jpg">
-    <label class="file-label">사진 파일 선택 <input id="managerImageFile" type="file" accept="image/*"></label>
-    <div id="imagePreview" class="image-preview">사진 미리보기</div>
+    <input id="managerImage" placeholder="대표사진 경로 예: assets/profiles/hihi/main.jpg">
+    <label class="file-label">대표사진 선택 <input id="managerImageFile" type="file" accept="image/*" data-photo-index="0"></label>
+    <div id="imagePreview" class="image-preview">대표사진 미리보기</div>
+    <div class="extra-photo-box">
+      <p class="hint">추가사진은 선택사항입니다. 최대 4장까지 등록 가능합니다.</p>
+      <label class="file-label">추가사진 1 <input id="managerImageFile1" type="file" accept="image/*" data-photo-index="1"></label>
+      <label class="file-label">추가사진 2 <input id="managerImageFile2" type="file" accept="image/*" data-photo-index="2"></label>
+      <label class="file-label">추가사진 3 <input id="managerImageFile3" type="file" accept="image/*" data-photo-index="3"></label>
+      <label class="file-label">추가사진 4 <input id="managerImageFile4" type="file" accept="image/*" data-photo-index="4"></label>
+      <div id="photoGalleryPreview" class="photo-gallery-preview"></div>
+    </div>
     <div class="button-row">
       <button onclick="saveManager()">저장</button>
       <button class="outline" onclick="clearForm()">비우기</button>

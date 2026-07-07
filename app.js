@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 let activeTherapists = [];
 let site = {};
 let currentProfileIndex = -1;
+let currentPhotoIndex = 0;
 
 const DEFAULT_SITE = {
   phone: "010-7255-2248",
@@ -25,26 +26,37 @@ function firebaseDb() {
   return null;
 }
 
+function getPhotos(m) {
+  const list = Array.isArray(m?.photos) ? m.photos : [];
+  const merged = [...list];
+  if (m?.image && !merged.includes(m.image)) merged.unshift(m.image);
+  return merged.map(src => String(src || "").trim()).filter(Boolean).slice(0, 5);
+}
+
 function normalizeManagers(list) {
   // Firebase Realtime Database can return arrays OR objects.
-  // Convert object data like {"123": {...}, "456": {...}} into an array first.
   let arr = [];
   if (Array.isArray(list)) {
     arr = list;
   } else if (list && typeof list === "object") {
     arr = Object.keys(list).map((key) => ({ id: list[key]?.id || key, ...(list[key] || {}) }));
   }
-  return arr.filter(Boolean).map((m, index) => ({
-    id: m.id || Date.now() + index,
-    name: m.name || "",
-    age: m.age || "",
-    height: m.height || "",
-    body: m.body || "",
-    work: m.work || "",
-    telegram: m.telegram || DEFAULT_SITE.telegram,
-    intro: m.intro || m.desc || "",
-    image: m.image || ""
-  }));
+  return arr.filter(Boolean).map((m, index) => {
+    const photos = getPhotos(m);
+    const mainImage = photos[0] || m.image || "";
+    return {
+      id: m.id || Date.now() + index,
+      name: m.name || "",
+      age: m.age || "",
+      height: m.height || "",
+      body: m.body || "",
+      work: m.work || "",
+      telegram: m.telegram || DEFAULT_SITE.telegram,
+      intro: m.intro || m.desc || "",
+      image: mainImage,
+      photos: photos.length ? photos : (mainImage ? [mainImage] : [])
+    };
+  });
 }
 
 function fallbackManagers() {
@@ -115,9 +127,11 @@ function updateLinks() {
 function renderTherapists() {
   const therapistGrid = $("#therapistGrid");
   if (!therapistGrid) return;
-  therapistGrid.innerHTML = activeTherapists.map((item) => `
+  therapistGrid.innerHTML = activeTherapists.map((item) => {
+    const photos = getPhotos(item);
+    return `
     <article class="therapist-card" onclick="openProfile(${item.id})">
-      <div class="thumb"><img src="${safeImage(item.image)}" alt="${item.name}" onerror="this.parentElement.classList.add('no-image'); this.remove();"></div>
+      <div class="thumb"><img src="${safeImage(photos[0] || item.image)}" alt="${item.name}" onerror="this.parentElement.classList.add('no-image'); this.remove();"></div>
       <div class="therapist-info">
         <h3>${item.name}</h3>
         <div class="therapist-meta">
@@ -129,24 +143,41 @@ function renderTherapists() {
         <em>PROFILE VIEW</em>
       </div>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function getProfileIntro(item) {
   return item.intro || item.desc || "밝고 편안한 분위기로 정성껏 관리해드립니다.\n처음 방문하시는 분들도 부담 없이 이용 가능합니다.";
 }
 
-function renderProfile(index) {
+function renderPhotoSlider(item, photoIndex = 0) {
+  const photos = getPhotos(item);
+  const mainPhoto = photos[photoIndex] || photos[0] || item.image || "";
+  const controls = photos.length > 1 ? `
+    <button class="photo-arrow left" type="button" onclick="changePhoto(-1); event.stopPropagation();">‹</button>
+    <button class="photo-arrow right" type="button" onclick="changePhoto(1); event.stopPropagation();">›</button>
+    <div class="photo-count">${photoIndex + 1} / ${photos.length}</div>
+    <div class="photo-dots">${photos.map((_, i) => `<button type="button" class="${i === photoIndex ? "active" : ""}" onclick="setPhoto(${i}); event.stopPropagation();"></button>`).join("")}</div>` : "";
+  return `<div class="profile-photo premium-photo gallery-photo" onclick="openPhotoZoom()">
+    <img src="${safeImage(mainPhoto)}" alt="${item.name}" onerror="this.parentElement.classList.add('no-image'); this.remove();">
+    ${controls}
+  </div>`;
+}
+
+function renderProfile(index, photoIndex = 0) {
   if (!activeTherapists.length) return;
   currentProfileIndex = (index + activeTherapists.length) % activeTherapists.length;
   const item = activeTherapists[currentProfileIndex];
+  const photos = getPhotos(item);
+  currentPhotoIndex = photos.length ? ((photoIndex + photos.length) % photos.length) : 0;
   const phoneNumber = String(site.phone || DEFAULT_SITE.phone).replace(/[^0-9]/g, "");
   const modalContent = $("#modalContent");
   if (!modalContent) return;
   modalContent.innerHTML = `
     <div class="premium-profile">
       <div class="premium-photo-wrap">
-        <div class="profile-photo premium-photo"><img src="${safeImage(item.image)}" alt="${item.name}" onerror="this.parentElement.classList.add('no-image'); this.remove();"></div>
+        ${renderPhotoSlider(item, currentPhotoIndex)}
       </div>
       <div class="premium-info">
         <p class="eyebrow">THERAPIST PROFILE</p>
@@ -170,10 +201,31 @@ function renderProfile(index) {
     </div>`;
 }
 
+function changePhoto(direction) {
+  const item = activeTherapists[currentProfileIndex];
+  if (!item) return;
+  renderProfile(currentProfileIndex, currentPhotoIndex + direction);
+}
+function setPhoto(index) {
+  renderProfile(currentProfileIndex, index);
+}
+function openPhotoZoom() {
+  const item = activeTherapists[currentProfileIndex];
+  if (!item) return;
+  const photos = getPhotos(item);
+  const src = photos[currentPhotoIndex] || photos[0] || item.image || "";
+  if (!src) return;
+  const zoom = document.createElement("div");
+  zoom.className = "photo-zoom";
+  zoom.innerHTML = `<button type="button">×</button><img src="${src}" alt="${item.name}">`;
+  zoom.addEventListener("click", () => zoom.remove());
+  document.body.appendChild(zoom);
+}
+
 function openProfile(id) {
-  const index = activeTherapists.findIndex(t => Number(t.id) === Number(id));
+  const index = activeTherapists.findIndex(t => String(t.id) === String(id));
   if (index < 0) return;
-  renderProfile(index);
+  renderProfile(index, 0);
   $("#profileModal").classList.add("show");
 }
 
